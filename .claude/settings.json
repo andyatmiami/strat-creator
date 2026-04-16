@@ -3,7 +3,12 @@
     "allow": [
       "Bash(python3 scripts/frontmatter.py *)",
       "Bash(python3 scripts/fetch_issue.py *)",
+      "Bash(python3 scripts/fetch_gdoc.py *)",
+      "Bash(python3 scripts/research_pipeline.py *)",
+      "Bash(python3 scripts/analyze_process.py *)",
       "Bash(python3 scripts/state.py *)",
+      "Bash(python3 scripts/fetch_components.py *)",
+      "Bash(python3 scripts/digest_components.py *)",
       "Bash(bash scripts/fetch-architecture-context.sh)",
       "Edit(artifacts/**)",
       "Write(artifacts/**)"

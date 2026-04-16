@@ -169,6 +169,11 @@ SCHEMAS = {
             "required": True,
             "enum": ["Draft", "Ready", "Refined", "Reviewed"],
         },
+        "refinement_doc_url": {
+            "type": "string",
+            "required": False,
+            "default": None,
+        },
     },
     "strat-review": {
         "strat_id": {
@@ -511,8 +516,9 @@ def update_frontmatter(path, updates, schema_type):
 # ─── Artifact File Discovery ───────────────────────────────────────────────────
 
 def _is_companion_file(filename):
-    """Check if a filename is a companion file (comments, removed-context)."""
-    return (filename.endswith(("-comments.md", "-removed-context.md"))
+    """Check if a filename is a companion file (comments, removed-context, refinement-doc)."""
+    return (filename.endswith(("-comments.md", "-removed-context.md",
+                               "-refinement-doc.md"))
             or filename.endswith("-removed-context.yaml"))
 
 

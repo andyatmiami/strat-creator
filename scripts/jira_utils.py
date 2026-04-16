@@ -16,6 +16,7 @@ import sys
 import time
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -187,6 +188,125 @@ def create_issue_link(server, user, token, type_name, inward_key, outward_key):
         "outwardIssue": {"key": outward_key},
     }
     api_call_with_retry(server, "/issueLink", user, token, body=body)
+
+
+def search_issues(server, user, token, jql, fields=None, max_results=50):
+    """GET /rest/api/3/search/jql — run JQL query with cursor-based pagination.
+
+    Args:
+        jql: JQL query string
+        fields: list of field names to return (default: ["summary", "status"])
+        max_results: page size per request (max 100)
+
+    Returns list of issue dicts (same shape as get_issue response).
+    """
+    if fields is None:
+        fields = ["summary", "status"]
+    all_issues = []
+    fields_str = ",".join(fields)
+    encoded_jql = urllib.parse.quote(jql, safe="")
+    next_token = None
+    while True:
+        path = (f"/search/jql?jql={encoded_jql}"
+                f"&fields={fields_str}"
+                f"&maxResults={min(max_results, 100)}")
+        if next_token:
+            path += f"&nextPageToken={urllib.parse.quote(next_token, safe='')}"
+        data = api_call_with_retry(server, path, user, token)
+        batch = data.get("issues", [])
+        all_issues.extend(batch)
+        if data.get("isLast", True) or not batch:
+            break
+        next_token = data.get("nextPageToken")
+        if not next_token:
+            break
+        print(f"  Fetched {len(all_issues)} issues so far...",
+              file=sys.stderr)
+    return all_issues
+
+
+def get_issue_links(server, user, token, issue_key):
+    """GET issue links for a given issue key.
+
+    Returns list of dicts, each with:
+        type_name: str (e.g. "Cloners", "Related")
+        direction: "inward" | "outward"
+        linked_key: str (the other issue's key)
+        linked_summary: str
+        linked_status: str
+    """
+    data = get_issue(server, user, token, issue_key, fields=["issuelinks"])
+    raw_links = data.get("fields", {}).get("issuelinks", [])
+    result = []
+    for link in raw_links:
+        type_name = link.get("type", {}).get("name", "")
+        if "outwardIssue" in link:
+            linked = link["outwardIssue"]
+            direction = "outward"
+        elif "inwardIssue" in link:
+            linked = link["inwardIssue"]
+            direction = "inward"
+        else:
+            continue
+        result.append({
+            "type_name": type_name,
+            "direction": direction,
+            "linked_key": linked.get("key", ""),
+            "linked_summary": linked.get("fields", {}).get("summary", ""),
+            "linked_status": linked.get("fields", {}).get("status", {}).get("name", ""),
+        })
+    return result
+
+
+def get_remote_links(server, user, token, issue_key):
+    """GET remote links (web links) for an issue.
+
+    Calls GET /rest/api/3/issue/{key}/remotelink.
+
+    Returns list of dicts, each with:
+        id: int (remote link ID)
+        url: str (the web URL)
+        title: str (display title)
+        relationship: str | None (e.g. "Web Link")
+    """
+    path = f"/issue/{issue_key}/remotelink"
+    try:
+        data = api_call_with_retry(server, path, user, token)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []
+        raise
+    if data is None:
+        return []
+    return [
+        {
+            "id": link.get("id"),
+            "url": link.get("object", {}).get("url", ""),
+            "title": link.get("object", {}).get("title", ""),
+            "relationship": link.get("relationship"),
+        }
+        for link in data
+    ]
+
+
+def get_issue_dates(server, user, token, issue_key):
+    """GET temporal metadata for an issue.
+
+    Returns dict with:
+        created: str (ISO 8601)
+        updated: str (ISO 8601)
+        resolved: str | None (ISO 8601, None if unresolved)
+        status: str (current status name)
+    """
+    data = get_issue(server, user, token, issue_key,
+                     fields=["created", "updated", "resolutiondate", "status"])
+    fields = data.get("fields", {})
+    return {
+        "created": fields.get("created"),
+        "updated": fields.get("updated"),
+        "resolved": fields.get("resolutiondate"),
+        "status": fields.get("status", {}).get("name", ""),
+    }
 
 
 def get_transitions(server, user, token, issue_key):

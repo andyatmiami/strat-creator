@@ -69,6 +69,44 @@ Read operations support two modes:
 
 Not yet implemented for strat-creator. Strategy submission to Jira will be added as a future skill.
 
+## Google Docs Integration
+
+RHAISTRAT tickets frequently link to external Google Docs refinement documents. Use `scripts/fetch_gdoc.py` to fetch these documents and store them as companion artifacts.
+
+### Authentication
+
+Requires one of:
+
+**Option A — OAuth refresh token (env vars):**
+```
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REFRESH_TOKEN=your-refresh-token
+```
+
+**Option B — Application Default Credentials (ADC):**
+```bash
+gcloud auth application-default login --scopes=https://www.googleapis.com/auth/drive.readonly
+```
+
+### Usage
+
+```bash
+# Export a Google Doc as JSON to stdout
+python3 scripts/fetch_gdoc.py https://docs.google.com/document/d/DOC_ID/edit
+
+# Write a companion artifact file for a strategy
+python3 scripts/fetch_gdoc.py https://docs.google.com/document/d/DOC_ID/edit \
+    --fetch-all artifacts --strat-key RHAISTRAT-400
+# -> writes artifacts/strat-tasks/RHAISTRAT-400-refinement-doc.md
+```
+
+### Limitations
+
+- Google Docs markdown export drops images (replaced with non-public links)
+- Maximum export size is 10MB per document
+- Tables may have formatting inconsistencies in markdown export
+
 ## Jira Field Mappings
 
 ### RHAISTRAT Project
