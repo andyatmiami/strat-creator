@@ -14,6 +14,8 @@ artifacts/
   strat-reviews/            # Per-strategy review files with YAML frontmatter
     STRAT-001-review.md
     RHAISTRAT-400-review.md
+  strat-refinements/        # Fetched PR refinement docs (from strategy.check-prs)
+    RHAISTRAT-400-refinement.md
   strat-originals/          # Original RFE snapshots at time of strategy creation
     RHAIRFE-1595.md
   strat-tickets.md          # RHAISTRAT ticket mapping after cloning
@@ -80,6 +82,16 @@ Not yet implemented for strat-creator. Strategy submission to Jira will be added
 ### RHAIRFE Project (source — read only)
 - **Project**: `RHAIRFE`
 - **Issue Type**: `Feature Request`
+
+## GitHub Integration (Refinement PRs)
+
+When a strategy receives a REVISE or REJECT verdict, the pipeline creates a Draft PR in a configurable GitHub repository containing a Feature Refinement Document. Staff engineers edit the PR, mark it Ready for Review, and the pipeline picks it up on the next run.
+
+- **Environment variable**: `GH_REFINEMENT_REPO` (e.g., `ederign/strat-refinements`) — required for PR creation
+- **Utilities**: `scripts/gh_utils.py` wraps `gh` CLI calls
+- **Pipeline order**: `create → check-prs → refine → review`
+- **Branch naming**: `strat-refinement/{strat_id}`
+- **File path in repo**: `refinements/{strat_id}.md`
 
 ## Architecture Context
 

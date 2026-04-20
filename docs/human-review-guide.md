@@ -52,6 +52,27 @@ Edit the inputs, rerun the pipeline, and let it regenerate the output.
 
 ## How to Fix a Strategy
 
+### Preferred: GitHub PR Workflow
+
+When a strategy receives a REVISE or REJECT verdict and `GH_REFINEMENT_REPO` is configured, the pipeline automatically creates a **Draft PR** in the configured GitHub repository. The PR contains a Feature Refinement Document with the review summary and a template for your feedback.
+
+**Steps:**
+
+1. Find the draft PR — a link is added to the RHAISTRAT Jira issue as an external link, or browse the `strat-refinement/` branches in the configured repo.
+2. Edit the refinement document in the PR. Fill in the **Staff Engineer Guidance** sections (Corrections, Direction, Scope Adjustments, Additional Context).
+3. Mark the PR as **Ready for Review** when you are done.
+4. On the next pipeline run, `/strategy.check-prs` detects the ready PR, fetches your feedback, removes the `strat-creator-needs-attention` label, and prepares the strategy for re-refinement.
+5. `/strategy.refine` regenerates the strategy using your PR feedback as the highest-priority input.
+6. `/strategy.review` re-scores the regenerated strategy.
+
+This is the preferred workflow because it provides full Git history, PR review comments, and a clear audit trail for all staff engineer feedback.
+
+**Environment variable:** `GH_REFINEMENT_REPO` must be set to `owner/repo` (e.g., `ederign/strat-refinements`). If not set, the pipeline falls back to the legacy Staff Engineer Input workflow below.
+
+### Legacy: Staff Engineer Input (Deprecated)
+
+> **Note:** This workflow is deprecated. Use the GitHub PR workflow above when `GH_REFINEMENT_REPO` is configured. This section remains for environments where GitHub integration is not yet available.
+
 ### Local Setup
 
 #### Prerequisites
@@ -115,8 +136,9 @@ Browse the review in our [dashboard](https://strat-dashboard-0f1209.gitlab.io/),
 | Path | When to Use | What to Edit | What to Rerun |
 |------|------------|-------------|---------------|
 | **A: Update architecture context** (recommended) | The reviewer found wrong dependencies, missing integration patterns, outdated platform info, or component gaps | Architecture context repo (opendatahub-io/architecture-context) | refine → review |
-| **B: Strategy-specific fix** | The issue is specific to this one strategy (wrong effort estimate, missing test criteria, scope needs narrowing) | `## Staff Engineer Input` section in the strategy file | refine → review |
-| **C: Both** | Architecture gaps AND strategy-specific issues | Both architecture context and Staff Engineer Input | refine → review |
+| **B: Edit the refinement PR** (preferred for strategy-specific fixes) | The issue is specific to this one strategy (wrong effort estimate, missing test criteria, scope needs narrowing) | The Feature Refinement Document in the draft PR (mark Ready for Review when done) | check-prs → refine → review |
+| **B (legacy): Staff Engineer Input** | Same as above, but GH_REFINEMENT_REPO is not configured | `## Staff Engineer Input` section in the strategy file | refine → review |
+| **C: Both** | Architecture gaps AND strategy-specific issues | Architecture context repo AND the refinement PR | check-prs → refine → review |
 
 **Path A is the recommended default.** Architecture context fixes are durable. They improve all future strategies, not just the one you're fixing. If the pipeline produced a bad strategy, the most likely root cause is that the architecture context was missing or wrong. Fix the source, not the symptom.
 
@@ -218,8 +240,9 @@ See the **Pipeline tab** in the [strat-creator dashboard](https://strat-dashboar
 
 ## Key Rules
 
-1. **Never edit strategy text directly.** Edit the inputs (architecture context or Staff Engineer Input), not the output
+1. **Never edit strategy text directly.** Edit the inputs (architecture context, refinement PR, or Staff Engineer Input), not the output
 2. **Prefer architecture context fixes.** They're durable and benefit all future strategies, not just the one you're fixing
-3. **Always rerun refine before review.** Review scores what refine produces, not what you wrote
-4. **`strat-creator-needs-attention` is one-way.** Only humans remove it, automation never clears it
-5. **Use Staff Engineer Input for one-off fixes.** Effort estimates, scope decisions, and other things that don't generalize
+3. **Use the refinement PR for strategy-specific fixes.** When `GH_REFINEMENT_REPO` is configured, edit the draft PR and mark it Ready for Review. This provides full traceability via Git history and PR review comments
+4. **Always rerun refine before review.** Review scores what refine produces, not what you wrote. When using PRs, run `check-prs → refine → review`
+5. **`strat-creator-needs-attention` is removed automatically** when `/strategy.check-prs` detects a ready PR. In the legacy workflow, only humans remove it
+6. **Staff Engineer Input is deprecated.** Use the PR workflow when available. The inline section still works as a fallback but lacks traceability

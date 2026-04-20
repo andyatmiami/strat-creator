@@ -189,6 +189,35 @@ def create_issue_link(server, user, token, type_name, inward_key, outward_key):
     api_call_with_retry(server, "/issueLink", user, token, body=body)
 
 
+def get_remote_links(server, user, token, issue_key):
+    """GET /rest/api/3/issue/{key}/remotelink — list external web links."""
+    path = f"/issue/{issue_key}/remotelink"
+    return api_call_with_retry(server, path, user, token) or []
+
+
+def add_remote_link(server, user, token, issue_key, url, title,
+                    icon_url=None):
+    """POST /rest/api/3/issue/{key}/remotelink — add an external web link.
+
+    Checks for an existing link with the same URL to avoid duplicates.
+    """
+    existing = get_remote_links(server, user, token, issue_key)
+    for link in existing:
+        if link.get("object", {}).get("url") == url:
+            return link  # already linked — no-op
+
+    body = {
+        "object": {
+            "url": url,
+            "title": title,
+        }
+    }
+    if icon_url:
+        body["object"]["icon"] = {"url16x16": icon_url}
+    path = f"/issue/{issue_key}/remotelink"
+    return api_call_with_retry(server, path, user, token, body=body)
+
+
 def get_transitions(server, user, token, issue_key):
     """GET available transitions for an issue."""
     path = f"/issue/{issue_key}/transitions"
