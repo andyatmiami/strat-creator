@@ -284,11 +284,90 @@ Print `[LABEL] <label> added to RHAISTRAT-NNNN`.
 
 In dry-run mode, skip and print `[DRY RUN] Skipping labels for RHAISTRAT-NNNN`.
 
+## Step 7d: Create Refinement PR (if needs_attention)
+
+For each strategy with `needs_attention=true`, check whether `GH_REFINEMENT_REPO` is set. If it is not set, skip this step entirely and log `[SKIP] GH_REFINEMENT_REPO not set — skipping refinement PR creation`.
+
+For each qualifying strategy:
+
+1. Read the strategy task file (`artifacts/strat-tasks/{id}.md`) and the review file frontmatter (`recommendation`, `scores.*`).
+
+2. Build the Feature Refinement Document from the **existing strategy file content**. The document uses the same structure as the strategy template (`strat-template.md`) so staff engineers work in the format they already know.
+
+   Compose the document as follows:
+   - Copy the **full strategy file content** (frontmatter + all three sections: Business Need, Strategy, Staff Engineer Input) from `artifacts/strat-tasks/{id}.md`
+   - Prepend a review summary block at the top of the body (below frontmatter) with the score table and a condensed summary of issues from each low-scoring dimension
+   - The `## Staff Engineer Input` section in the copied content is where the staff engineer will write their feedback — this is the same section they already know from the existing workflow
+
+   The result is a self-contained document: the staff engineer sees the full strategy, the review findings, and the place to write feedback — all in one file.
+
+3. Check if a PR already exists for branch `strat-refinement/{strat_id}`:
+
+   ```bash
+   python3 -c "
+   import sys; sys.path.insert(0, 'scripts')
+   from gh_utils import find_pr_by_branch, require_gh_env
+   repo = require_gh_env()
+   pr = find_pr_by_branch(repo, sys.argv[1])
+   import json; print(json.dumps(pr))
+   " "strat-refinement/{strat_id}"
+   ```
+
+   - **If PR exists**: Update the refinement document on the existing branch using `create_or_update_file`. Do not create a new PR.
+   - **If no PR**: Create a branch, commit the document, and open a draft PR:
+
+   ```bash
+   python3 -c "
+   import sys, os; sys.path.insert(0, 'scripts')
+   from gh_utils import require_gh_env, create_branch, create_or_update_file, create_draft_pr
+   repo = require_gh_env()
+   strat_id = sys.argv[1]
+   branch = f'strat-refinement/{strat_id}'
+   create_branch(repo, branch)
+   content = open(sys.argv[2]).read()
+   create_or_update_file(repo, branch, f'refinements/{strat_id}.md', content,
+                         f'Add refinement doc for {strat_id}')
+   pr_url = create_draft_pr(repo, branch,
+       f'[Refinement] {strat_id}: Strategy needs revision',
+       f'This PR contains the Feature Refinement Document for {strat_id}.\n\n'
+       f'**Edit the `## Staff Engineer Input` section** with corrections, '
+       f'direction, and scope adjustments, then mark this PR as '
+       f'Ready for Review to trigger pipeline re-evaluation.')
+   print(pr_url)
+   " "{strat_id}" /tmp/strat-refinement-{strat_id}.md
+   ```
+
+4. Add the PR URL as an external link on the Jira issue (if `jira_key` is set and not in dry-run mode):
+
+   ```bash
+   python3 -c "
+   import sys, os; sys.path.insert(0, 'scripts')
+   from jira_utils import add_remote_link
+   server, user, token = os.environ['JIRA_SERVER'], os.environ['JIRA_USER'], os.environ['JIRA_TOKEN']
+   add_remote_link(server, user, token, sys.argv[1], sys.argv[2],
+                   'Feature Refinement PR',
+                   'https://github.githubassets.com/favicons/favicon.svg')
+   " "RHAISTRAT-NNNN" "PR_URL"
+   ```
+
+5. Update the strategy task frontmatter with the PR URL:
+
+   ```bash
+   python3 scripts/frontmatter.py set artifacts/strat-tasks/{filename}.md \
+       refinement_pr_url="{PR_URL}"
+   ```
+
+**Dry-run mode:**
+- Write the generated refinement document to `artifacts/strat-refinements/{strat_id}-refinement.md` instead of creating a GitHub PR.
+- Skip Jira remote link creation.
+- Skip setting `refinement_pr_url` in frontmatter (since there is no real PR URL).
+- Print `[DRY RUN] Refinement doc saved to artifacts/strat-refinements/{strat_id}-refinement.md`.
+
 ## Step 8: Advise the User
 
 Based on the results:
 - **All approved** (`needs_attention=false`): Tell the user strategies are ready for `/strat.prioritize`.
-- **Some need revision** (`needs_attention=true`, verdict=REVISE): List specific issues by dimension. Tell the user to edit the strategy files, remove `needs-attention`, and re-run `/strategy-review`.
-- **Fundamental problems** (`needs_attention=true`, verdict=REJECT): Recommend revisiting the RFE or re-running `/strategy-refine` with different constraints.
+- **Some need revision** (`needs_attention=true`, verdict=REVISE): List specific issues by dimension. If a refinement PR was created, tell the user to edit the PR and mark it Ready for Review. If no PR (`GH_REFINEMENT_REPO` not set), tell the user to edit the `## Staff Engineer Input` section, remove `needs-attention`, and re-run `/strategy-refine` then `/strategy-review`.
+- **Fundamental problems** (`needs_attention=true`, verdict=REJECT): Recommend revisiting the source RFE or providing extensive guidance in the refinement PR (or `## Staff Engineer Input` if no PR). If a PR was created, note that it is available for the staff engineer to redirect the approach entirely.
 
 $ARGUMENTS

@@ -175,6 +175,11 @@ SCHEMAS = {
             "enum": ["local", "ci"],
             "default": None,
         },
+        "refinement_pr_url": {
+            "type": "string",
+            "required": False,
+            "default": None,
+        },
     },
     "strat-review": {
         "strat_id": {

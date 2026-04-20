@@ -14,6 +14,8 @@ artifacts/                      # CI pipeline output (gitignored)
   strat-reviews/                  # Per-strategy review files with YAML frontmatter
     STRAT-001-review.md
     RHAISTRAT-400-review.md
+  strat-refinements/              # Fetched PR refinement docs (from strategy.check-prs)
+    RHAISTRAT-400-refinement.md
   strat-originals/                # Original RFE snapshots at time of strategy creation
     RHAIRFE-1595.md
   strat-tickets.md                # RHAISTRAT ticket mapping after cloning
@@ -95,6 +97,16 @@ Not yet implemented for strat-creator. Strategy submission to Jira will be added
 After every code change, run the test suite in a background subagent before reporting the change as complete. Use `make test-unit` for changes to scripts or library code. Use `make test` to run all tests when integration/E2E tests are also relevant. Never skip this step — a change is not done until tests pass.
 
 **Always run `make test` (full suite including integration tests) before pushing to remote.** Unit tests alone are not sufficient — the jira-emulator integration tests catch issues that unit tests miss.
+
+## GitHub Integration (Refinement PRs)
+
+When a strategy receives a REVISE or REJECT verdict, the pipeline creates a Draft PR in a configurable GitHub repository containing a Feature Refinement Document. Staff engineers edit the PR, mark it Ready for Review, and the pipeline picks it up on the next run.
+
+- **Environment variable**: `GH_REFINEMENT_REPO` (e.g., `ederign/strat-refinements`) — required for PR creation
+- **Utilities**: `scripts/gh_utils.py` wraps `gh` CLI calls
+- **Pipeline order**: `create → check-prs → refine → review`
+- **Branch naming**: `strat-refinement/{strat_id}`
+- **File path in repo**: `refinements/{strat_id}.md`
 
 ## Architecture Context
 

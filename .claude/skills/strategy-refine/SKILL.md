@@ -81,7 +81,7 @@ In revision mode:
 - **Preserve what's working.** If reviewers approved aspects of the strategy, don't rewrite those sections.
 - **Note what changed.** Document what changed and why in the review file's `## Revision History` section (`artifacts/strat-reviews/{id}-review.md`), not in the strategy artifact itself. Keep strategy files clean with only frontmatter and business/strategy content.
 - **Flag disagreements.** If you believe a reviewer's concern is invalid, keep the current approach and explain why in the revision notes rather than silently ignoring it.
-- **Re-check HOW Context Sources.** A staff engineer may have populated the Staff Engineer / SME Input section between the initial refinement and this revision. Treat any new Staff Engineer / SME Input as the highest priority input for the revision.
+- **Re-check HOW Context Sources.** A staff engineer may have provided feedback via a PR refinement document (Source 1) or via the Staff Engineer / SME Input section. Check Source 1 first — if a PR refinement document exists, it is the highest priority input for the revision.
 
 If no review files exist, this is initial refinement — generate the strategy from the stub.
 
@@ -103,7 +103,21 @@ Before generating the strategy, check for three high-priority inputs that contai
 3. Removed RFE Context (per-RFE implementation details)
 4. Architecture Context (generated platform docs)
 
-### Source 1: Removed Implementation Context from RFE
+### Source 1 (Highest Priority): PR Refinement Document
+
+Check for a fetched refinement document at `artifacts/strat-refinements/{strat_id}-refinement.md`. If present, this was populated by `/strategy.check-prs` from a GitHub PR where a staff engineer provided structured feedback after reviewing the strategy.
+
+When a PR refinement document exists:
+- Treat it as the **highest-priority input** — it overrides Staff Engineer Input (Source 3), removed RFE context (Source 2), and architecture context when they conflict.
+- Address each section of the document: Corrections, Direction, Scope Adjustments, and Additional Context.
+- If the document contradicts your analysis, follow the staff engineer's direction from the PR and note the reasoning.
+- Log: `[INFO] Using PR refinement document for {strat_id}`
+
+If both a PR refinement document and Staff Engineer Input exist for the same strategy, use only the PR refinement document and log: `[WARNING] Both PR refinement doc and Staff Engineer Input found for {strat_id}. Using PR content (higher priority). Staff Engineer Input content is ignored.`
+
+If no refinement document exists at that path, skip this source and continue to Source 2.
+
+### Source 2: Removed Implementation Context from RFE
 
 Read the strategy's frontmatter to get the `source_rfe` key (e.g., RHAIRFE-710). Always fetch fresh comments from Jira — do not rely on a cached comments file from a previous run, as new comments may have been added since creation.
 
@@ -131,9 +145,11 @@ If Jira is unavailable, fall back to reading the cached file at `artifacts/strat
 
 ### Source 2: Staff Engineer / SME Input
 
+> **Note:** When a PR refinement document exists (Source 1), it takes priority and this source is ignored. This source remains active as a fallback for strategies that do not have a refinement PR.
+
 Read the strategy file being refined. Check the `## Staff Engineer / SME Input` section for content beyond the default template placeholder (HTML comments only).
 
-If a staff engineer has added guidance, corrections, or domain expertise to this section, treat it as the highest-priority input. Staff engineer input overrides both architecture context and removed RFE context when they conflict, because it represents direct human expert judgment on this specific strategy.
+If a staff engineer has added guidance, corrections, or domain expertise to this section, and no PR refinement document exists (Source 1), treat it as high-priority input. Staff engineer input overrides both architecture context and removed RFE context when they conflict, because it represents direct human expert judgment on this specific strategy.
 
 When Staff Engineer / SME Input has content:
 - Address each point in the Technical Approach
