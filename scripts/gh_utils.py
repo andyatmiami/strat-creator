@@ -3,7 +3,7 @@
 
 Wraps ``gh`` CLI calls for creating branches, committing files, and
 managing draft PRs in a configurable GitHub repository.  Used by
-strategy.review (to create refinement PRs) and strategy.check-prs
+strategy.review (to create refinement PRs) and strategy.refine
 (to poll PR readiness and fetch content).
 
 Environment variables:
@@ -59,12 +59,13 @@ def _run_gh(args, check=True):
 
 def branch_name_for_strat(strat_id):
     """Return the canonical branch name for a strategy refinement PR."""
-    return f"strat-refinement/{strat_id}"
+    return f"strat-refinement/{strat_id.lower()}"
 
 
 def file_path_for_strat(strat_id):
     """Return the path within the repo where the refinement doc lives."""
-    return f"refinements/{strat_id}.md"
+    folder = strat_id.lower()
+    return f"{folder}/{folder}.md"
 
 
 def create_branch(repo, branch, base="main", dry_run=False):
@@ -235,6 +236,90 @@ def get_pr_file_content(repo, pr_number, path):
               file=sys.stderr)
         return None
     return result.stdout
+
+
+def create_pr_review(repo, pr_number, body, dry_run=False):
+    """Submit a PR review with event COMMENT.
+
+    Posts a review-level comment (visible in the PR timeline with
+    distinct styling, auto-collapsed by GitHub on subsequent reviews).
+    Returns True on success.
+    """
+    if dry_run:
+        print(f"[DRY RUN] Would post PR review on {repo}#{pr_number}",
+              file=sys.stderr)
+        return True
+
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/pulls/{pr_number}/reviews",
+         "--method", "POST",
+         "-f", f"body={body}",
+         "-f", "event=COMMENT"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        print(f"ERROR creating PR review: {result.stderr}", file=sys.stderr)
+        return False
+    return True
+
+
+def convert_pr_to_draft(repo, pr_number, dry_run=False):
+    """Convert a PR back to draft using the GraphQL API.
+
+    Returns True on success.
+    """
+    if dry_run:
+        print(f"[DRY RUN] Would convert {repo}#{pr_number} to draft",
+              file=sys.stderr)
+        return True
+
+    # Get the PR's node ID
+    pr_data = _run_gh([
+        "pr", "view", str(pr_number),
+        "--repo", repo,
+        "--json", "id",
+    ])
+    if not isinstance(pr_data, dict) or "id" not in pr_data:
+        print(f"ERROR: Could not get node ID for PR #{pr_number}",
+              file=sys.stderr)
+        return False
+
+    node_id = pr_data["id"]
+    query = (
+        'mutation { convertPullRequestToDraft'
+        f'(input: {{pullRequestId: "{node_id}"}}) '
+        '{ pullRequest { isDraft } } }'
+    )
+    result = subprocess.run(
+        ["gh", "api", "graphql", "-f", f"query={query}"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        print(f"ERROR converting PR to draft: {result.stderr}",
+              file=sys.stderr)
+        return False
+    return True
+
+
+def merge_pr(repo, pr_number, dry_run=False):
+    """Merge a PR using the merge commit strategy.
+
+    Returns True on success.
+    """
+    if dry_run:
+        print(f"[DRY RUN] Would merge {repo}#{pr_number}",
+              file=sys.stderr)
+        return True
+
+    result = subprocess.run(
+        ["gh", "pr", "merge", str(pr_number),
+         "--repo", repo, "--merge"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        print(f"ERROR merging PR: {result.stderr}", file=sys.stderr)
+        return False
+    return True
 
 
 def pr_number_from_url(url):

@@ -7,11 +7,12 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Skill, Agent
 
 You are a strategy review orchestrator. Your job is to score and review the strategies in `artifacts/strat-tasks/`, producing per-strategy review files with numeric scores and detailed prose.
 
-## Dry Run Mode
+## Dry Run Modes
 
-If `--dry-run` is in `$ARGUMENTS`, skip ALL external writes:
+**`--dry-run`** (full dry run): Skip ALL external writes — no Jira, no GitHub.
 - Do NOT write or update any Jira issues
 - Do NOT post review comments to Jira — save them to `artifacts/strat-reviews/{id}-review-comment.md` instead
+- Do NOT create GitHub PRs — save refinement docs to `artifacts/strat-refinements/` instead
 - DO still read from Jira and local artifacts (reads are safe)
 - DO still create local review files in `artifacts/strat-reviews/`
 
@@ -30,6 +31,17 @@ In local mode:
 Local mode is also active if any strategy file's frontmatter contains `workflow: local`.
 
 If both `local/strat-tasks/` and `artifacts/strat-tasks/` have files, prefer `local/strat-tasks/`.
+
+**`--dry-run-jira`** (Jira-only dry run): Skip Jira writes but DO perform GitHub operations.
+- Do NOT write or update any Jira issues
+- Do NOT post review comments to Jira — save them to `artifacts/strat-reviews/{id}-review-comment.md` instead
+- Do NOT add external links to Jira issues
+- DO create GitHub branches, commit files, and open draft PRs (Step 7d)
+- DO set `refinement_pr_url` in strategy task frontmatter
+- DO still read from Jira and local artifacts (reads are safe)
+- DO still create local review files in `artifacts/strat-reviews/`
+
+Use `--dry-run-jira` when you want to test the GitHub PR workflow without modifying Jira tickets.
 
 ## Step 1: Verify Artifacts Exist
 
@@ -197,52 +209,32 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/strat-reviews/<
 
 ## Step 7a: Post Review Summary to Jira
 
-For each reviewed strategy, compose a review summary comment and post it to the RHAISTRAT issue (or save to file in dry-run mode).
+For each reviewed strategy, compose and post a review summary comment to the RHAISTRAT issue (or save to file in dry-run mode).
 
-Read the review file frontmatter to get scores and recommendation:
+1. **Compose the comment** using the deterministic script:
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py read artifacts/strat-reviews/{id}-review.md
-```
+   ```bash
+   python3 scripts/compose_review_comment.py \
+       artifacts/strat-reviews/{id}-review.md \
+       --output /tmp/strat-review-comment-{strat_id}.md
+   ```
 
-Compose the comment in markdown using this format:
+   This reads the review file frontmatter (scores, recommendation) and the Scores table notes to produce the formatted Jira comment with the scores table, per-dimension issue summaries, and verdict-specific action text.
 
-```markdown
-*[Strat Creator]* Strategy Review — {VERDICT} (Score: {total}/8)
+2. **Post to Jira:**
 
-| Criterion | Score | Status |
-|-----------|-------|--------|
-| Feasibility | {F}/2 | {✓ if 2, ⚠ if 1, ✗ if 0} |
-| Testability | {T}/2 | {✓ if 2, ⚠ if 1, ✗ if 0} |
-| Scope | {S}/2 | {✓ if 2, ⚠ if 1, ✗ if 0} |
-| Architecture | {A}/2 | {✓ if 2, ⚠ if 1, ✗ if 0} |
+   ```bash
+   python3 -c "
+   import sys; sys.path.insert(0, 'scripts')
+   from jira_utils import add_comment, markdown_to_adf
+   import os
+   comment_md = open(sys.argv[1]).read()
+   add_comment(os.environ['JIRA_SERVER'], os.environ['JIRA_USER'],
+               os.environ['JIRA_TOKEN'], sys.argv[2], markdown_to_adf(comment_md))
+   " /tmp/strat-review-comment-{strat_id}.md RHAISTRAT-NNNN
+   ```
 
-{For each dimension scored < 2, one sentence summarizing the issue from the prose review.}
-
-**Action:** {verdict-specific guidance}
-```
-
-Action text by verdict:
-- **APPROVE**: "No action needed — strategy passed quality review."
-- **REVISE**: "Edit the strategy to address flagged issues, then remove the `needs-attention` label. The pipeline will re-evaluate automatically."
-- **REJECT**: "This strategy has fundamental problems. Consider revisiting the source RFE or re-running `/strategy-refine` with different constraints."
-
-**Posting:**
-
-Save the composed markdown to a temp file, then post:
-
-```bash
-python3 -c "
-import sys; sys.path.insert(0, '${CLAUDE_SKILL_DIR}/scripts')
-from jira_utils import add_comment, markdown_to_adf
-import os
-comment_md = open(sys.argv[1]).read()
-add_comment(os.environ['JIRA_SERVER'], os.environ['JIRA_USER'],
-            os.environ['JIRA_TOKEN'], sys.argv[2], markdown_to_adf(comment_md))
-" /tmp/strat-review-comment-{KEY}.md RHAISTRAT-NNNN
-```
-
-- **Dry-run mode**: Write the comment markdown to `artifacts/strat-reviews/{id}-review-comment.md` instead. Print `[DRY RUN] Review comment saved to artifacts/strat-reviews/{id}-review-comment.md`.
+- **Dry-run mode** (`--dry-run` or `--dry-run-jira`): Run `compose_review_comment.py` with `--output artifacts/strat-reviews/{id}-review-comment.md` instead. Print `[DRY RUN] Review comment saved to artifacts/strat-reviews/{id}-review-comment.md`.
 - **Jira credentials unavailable**: Save to file (same as dry-run) and notify the user.
 
 ## Step 7b: Attach Full Review File to Jira
@@ -290,54 +282,36 @@ For each strategy with `needs_attention=true`, check whether `GH_REFINEMENT_REPO
 
 For each qualifying strategy:
 
-1. Read the strategy task file (`artifacts/strat-tasks/{id}.md`) and the review file frontmatter (`recommendation`, `scores.*`).
-
-2. Build the Feature Refinement Document from the **existing strategy file content**. The document uses the same structure as the strategy template (`strat-template.md`) so staff engineers work in the format they already know.
-
-   Compose the document as follows:
-   - Copy the **full strategy file content** (frontmatter + all three sections: Business Need, Strategy, Staff Engineer Input) from `artifacts/strat-tasks/{id}.md`
-   - Prepend a review summary block at the top of the body (below frontmatter) with the score table and a condensed summary of issues from each low-scoring dimension
-   - The `## Staff Engineer Input` section in the copied content is where the staff engineer will write their feedback — this is the same section they already know from the existing workflow
-
-   The result is a self-contained document: the staff engineer sees the full strategy, the review findings, and the place to write feedback — all in one file.
-
-3. Check if a PR already exists for branch `strat-refinement/{strat_id}`:
+1. **Prepare the PR artifacts** using the deterministic splitting script:
 
    ```bash
-   python3 -c "
-   import sys; sys.path.insert(0, 'scripts')
-   from gh_utils import find_pr_by_branch, require_gh_env
-   repo = require_gh_env()
-   pr = find_pr_by_branch(repo, sys.argv[1])
-   import json; print(json.dumps(pr))
-   " "strat-refinement/{strat_id}"
+   python3 scripts/prepare_refinement_pr.py \
+       artifacts/strat-tasks/{id}.md \
+       artifacts/strat-reviews/{id}-review.md \
+       --out-doc /tmp/strat-refinement-{strat_id}.md \
+       --out-body /tmp/strat-refinement-{strat_id}-body.md \
+       --out-gates /tmp/strat-refinement-{strat_id}-gates.md
    ```
 
-   - **If PR exists**: Update the refinement document on the existing branch using `create_or_update_file`. Do not create a new PR.
-   - **If no PR**: Create a branch, commit the document, and open a draft PR:
+   This script deterministically splits the strategy file into three outputs:
+   - **`--out-doc`**: The strategy content (the "HOW") — `## Strategy` section only, with legacy disclaimer comments, `### Prerequisites & Process Gates`, and `## Staff Engineer Input` stripped out. This is what staff engineers edit directly in the PR.
+   - **`--out-body`**: The PR description — frontmatter metadata, review summary with scores table, and full Business Need content (the "WHY").
+   - **`--out-gates`**: The `### Prerequisites & Process Gates` table, posted as a PR review comment. File is only created if the section exists in the strategy.
+
+2. **Create or update the refinement PR and post process gates:**
 
    ```bash
-   python3 -c "
-   import sys, os; sys.path.insert(0, 'scripts')
-   from gh_utils import require_gh_env, create_branch, create_or_update_file, create_draft_pr
-   repo = require_gh_env()
-   strat_id = sys.argv[1]
-   branch = f'strat-refinement/{strat_id}'
-   create_branch(repo, branch)
-   content = open(sys.argv[2]).read()
-   create_or_update_file(repo, branch, f'refinements/{strat_id}.md', content,
-                         f'Add refinement doc for {strat_id}')
-   pr_url = create_draft_pr(repo, branch,
-       f'[Refinement] {strat_id}: Strategy needs revision',
-       f'This PR contains the Feature Refinement Document for {strat_id}.\n\n'
-       f'**Edit the `## Staff Engineer Input` section** with corrections, '
-       f'direction, and scope adjustments, then mark this PR as '
-       f'Ready for Review to trigger pipeline re-evaluation.')
-   print(pr_url)
-   " "{strat_id}" /tmp/strat-refinement-{strat_id}.md
+   python3 scripts/create_refinement_pr.py {strat_id} \
+       --doc /tmp/strat-refinement-{strat_id}.md \
+       --body /tmp/strat-refinement-{strat_id}-body.md \
+       --gates /tmp/strat-refinement-{strat_id}-gates.md
    ```
 
-4. Add the PR URL as an external link on the Jira issue (if `jira_key` is set and not in dry-run mode):
+   This script handles the full PR lifecycle: checks for an existing PR on the branch, creates a new branch + draft PR or updates the existing one, and posts the process gates as a PR review comment (event type COMMENT). It prints the PR URL to stdout.
+
+   Omit `--gates` if `prepare_refinement_pr.py` did not produce a gates file.
+
+3. Add the PR URL as an external link on the Jira issue (if `jira_key` is set and not in dry-run mode):
 
    ```bash
    python3 -c "
@@ -350,18 +324,50 @@ For each qualifying strategy:
    " "RHAISTRAT-NNNN" "PR_URL"
    ```
 
-5. Update the strategy task frontmatter with the PR URL:
+4. Update the strategy task frontmatter with the PR URL:
 
    ```bash
    python3 scripts/frontmatter.py set artifacts/strat-tasks/{filename}.md \
        refinement_pr_url="{PR_URL}"
    ```
 
-**Dry-run mode:**
-- Write the generated refinement document to `artifacts/strat-refinements/{strat_id}-refinement.md` instead of creating a GitHub PR.
-- Skip Jira remote link creation.
-- Skip setting `refinement_pr_url` in frontmatter (since there is no real PR URL).
+**`--dry-run` mode (full dry run):**
+- Run `prepare_refinement_pr.py` with output paths under `artifacts/strat-refinements/` instead of `/tmp/` (`{strat_id}-refinement.md`, `{strat_id}-pr-body.md`, `{strat_id}-gates.md`). Do not create a GitHub PR.
+- Skip `create_refinement_pr.py`, Jira remote link creation, and frontmatter update.
 - Print `[DRY RUN] Refinement doc saved to artifacts/strat-refinements/{strat_id}-refinement.md`.
+
+**`--dry-run-jira` mode (Jira-only dry run):**
+- DO run both `prepare_refinement_pr.py` and `create_refinement_pr.py` — this is the whole point of this mode.
+- DO set `refinement_pr_url` in strategy task frontmatter with the real PR URL.
+- DO save the refinement doc to `artifacts/strat-refinements/{strat_id}-refinement.md` as well (local copy).
+- Skip Jira remote link creation — print `[DRY RUN JIRA] Skipping Jira remote link for {jira_key}`.
+- Print the PR URL so the user can open it in their browser.
+
+## Step 7c: Merge Approved Refinement PRs
+
+For each strategy with `needs_attention=false` that has `refinement_pr_url` set in its frontmatter, the strategy has passed review after a revision cycle — merge and clean up the PR.
+
+1. **Merge the PR:**
+
+   ```bash
+   python3 -c "
+   import sys, os; sys.path.insert(0, 'scripts')
+   from gh_utils import merge_pr, pr_number_from_url
+   pr_num = pr_number_from_url(sys.argv[1])
+   repo = os.environ['GH_REFINEMENT_REPO']
+   merge_pr(repo, pr_num)
+   " "{refinement_pr_url}"
+   ```
+
+2. **Clear the PR URL from frontmatter:**
+
+   ```bash
+   python3 scripts/frontmatter.py set artifacts/strat-tasks/{filename}.md \
+       refinement_pr_url=
+   ```
+
+- **Dry-run mode** (`--dry-run` or `--dry-run-jira`): Print `[DRY RUN] Would merge refinement PR for {strat_id}: {refinement_pr_url}`. Do not merge or clear frontmatter.
+- **`GH_REFINEMENT_REPO` not set**: Skip this step.
 
 ## Step 8: Advise the User
 

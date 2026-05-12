@@ -11,7 +11,7 @@
 
 {review_summary}
 
-> **Instructions**: Edit the `## Staff Engineer Input` section below with your corrections and guidance.
+> **Instructions**: Edit the strategy document directly with your corrections and guidance.
 > When done, mark this PR as **Ready for Review** to trigger pipeline re-evaluation.
 
 ---

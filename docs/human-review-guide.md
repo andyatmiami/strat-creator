@@ -117,6 +117,17 @@ Example Staff Engineer / SME Input:
 
 > **Note on scoring drift:** LLM-based grading is non-deterministic. Scores may vary slightly between runs, even with the same input. Use scores as directional signals, not exact measurements. If a score seems borderline or surprising, focus on the prose reviews. They explain the reasoning behind the score.
 
+### Fix Paths
+
+| Path | When to Use | What to Edit | What to Rerun |
+|------|------------|-------------|---------------|
+| **A: Update architecture context** (recommended) | The reviewer found wrong dependencies, missing integration patterns, outdated platform info, or component gaps | Architecture context repo (opendatahub-io/architecture-context) | refine → review |
+| **B: Edit the refinement PR** (preferred for strategy-specific fixes) | The issue is specific to this one strategy (wrong effort estimate, missing test criteria, scope needs narrowing) | The Feature Refinement Document in the draft PR (mark Ready for Review when done) | refine → review |
+| **B (legacy): Staff Engineer Input** | Same as above, but GH_REFINEMENT_REPO is not configured | `## Staff Engineer Input` section in the strategy file | refine → review |
+| **C: Both** | Architecture gaps AND strategy-specific issues | Architecture context repo AND the refinement PR | refine → review |
+
+**Path A is the recommended default.** Architecture context fixes are durable. They improve all future strategies, not just the one you're fixing.
+
 Example Staff Engineer Input:
 ```markdown
 ## Staff Engineer / SME Input
@@ -159,7 +170,7 @@ Check the updated strategy in `local/strat-tasks/` and scores in `local/strat-re
 2. **Prefer architecture context fixes / overlays.** They're durable and benefit all future strategies, not just the one you're fixing.
 3. **Use the refinement PR for strategy-specific fixes.** When `GH_REFINEMENT_REPO` is configured, edit the draft PR and mark it Ready for Review. This provides full traceability via Git history and PR review comments. Fall back to `## Staff Engineer Input` when GitHub integration is not available.
 4. **Always rerun refine before review.** Review scores what refine produces, not what you wrote. When using PRs, run `check-prs → refine → review`.
-5. **Needs-attention must go back through CI.** Use `/strategy-push`, then `/strategy-signoff` after CI approves. When using PRs, `strat-creator-needs-attention` is removed automatically when `/strategy.check-prs` detects a ready PR.
+5. **Needs-attention must go back through CI.** Use `/strategy-push`, then `/strategy-signoff` after CI approves. When using PRs, `strat-creator-needs-attention` is removed automatically when the pipeline detects a ready PR.
 6. **Sign-off requires CI approval.** `strat-creator-human-sign-off` requires `strat-creator-rubric-pass`.
 
 ## Resources

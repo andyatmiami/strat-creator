@@ -100,13 +100,13 @@ After every code change, run the test suite in a background subagent before repo
 
 ## GitHub Integration (Refinement PRs)
 
-When a strategy receives a REVISE or REJECT verdict, the pipeline creates a Draft PR in a configurable GitHub repository containing a Feature Refinement Document. Staff engineers edit the PR, mark it Ready for Review, and the pipeline picks it up on the next run.
+When a strategy receives a REVISE or REJECT verdict, the pipeline creates a Draft PR in a configurable GitHub repository containing the strategy document (the "HOW"). The PR description contains the business context (the "WHY") and review summary. Staff engineers edit the strategy content directly in the PR, mark it Ready for Review, and the pipeline picks it up on the next run.
 
 - **Environment variable**: `GH_REFINEMENT_REPO` (e.g., `ederign/strat-refinements`) — required for PR creation
 - **Utilities**: `scripts/gh_utils.py` wraps `gh` CLI calls
-- **Pipeline order**: `create → check-prs → refine → review`
-- **Branch naming**: `strat-refinement/{strat_id}`
-- **File path in repo**: `refinements/{strat_id}.md`
+- **Pipeline order**: `create → refine → review`
+- **Branch naming**: `strat-refinement/{strat_id_lowercase}` (e.g., `strat-refinement/rhaistrat-1182`)
+- **File path in repo**: `{strat_id_lowercase}/{strat_id_lowercase}.md` (e.g., `rhaistrat-1182/rhaistrat-1182.md`)
 
 ## Architecture Context
 
